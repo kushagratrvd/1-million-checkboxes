@@ -11,22 +11,39 @@ async function main() {
   io.attach(server);
 
   const checkboxStates = new Map();
+  let totalUsers = 0;
+  let totalChecked = 0;
 
   io.on('connection', (socket) => {
     console.log(`A new socket is connected`, socket.id);
 
     socket.emit('initialStates', Object.fromEntries(checkboxStates));
+    io.emit('totalDataUpdate', { totalUsers: ++totalUsers, totalChecked });
 
     socket.on('checkboxUpdate', (data) => {
-      checkboxStates.set(data.id, data.checked);
-      socket.broadcast.emit('checkboxUpdate', data);
+      const previousState = checkboxStates.get(data.id) || false;
+      
+      if (previousState !== data.checked) {
+        if (data.checked) {
+          totalChecked++;
+        } else {
+          totalChecked--;
+        }
+        checkboxStates.set(data.id, data.checked);
+        
+        socket.broadcast.emit('checkboxUpdate', data);
+        io.emit('totalDataUpdate', { totalUsers, totalChecked });
+      }
     });
 
-    //socket.on('disconnect')
+    socket.on('disconnect', (data) => {
+      totalUsers--;
+      io.emit('totalDataUpdate', { totalUsers, totalChecked });
+    });
   });
 
   //app.get("/", index.html);
-  const port = process.env.PORT || 8080
+  const port = process.env.PORT || 8081
   server.listen(port, ()=>{
     console.log(`server is running on port ${port}`);
 

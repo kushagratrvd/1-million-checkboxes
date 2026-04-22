@@ -8,9 +8,15 @@
 </head>
 <body>
   <h1>1 Million Checkboxes</h1>
+  <div class="header-stats">
+    Active Users: <span id="active-users">0</span> | 
+    Total Checked: <span id="total-checked">0</span>
+  </div>
   <div id="checkbox-container" class="checkbox-container"></div>
 </body>
 <script>
+  let activeUsers = document.getElementById('active-users');
+  let totalChecked = document.getElementById('total-checked');
   const socket = io();
   const container = document.getElementById('checkbox-container');
   let checkboxCount = 0;
@@ -39,6 +45,11 @@
     if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
       addCheckboxes();
     }
+  });
+
+  socket.on('totalDataUpdate', (data) => {
+    activeUsers.innerText = data.totalUsers;
+    totalChecked.innerText = data.totalChecked;
   });
 
   socket.on('checkboxUpdate', (data) => {

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="/socket.io/socket.io.js"></script>
+  <title>1 million checkboxes</title>
+</head>
+<body>
+  <h1>1 Million Checkboxes</h1>
+  <div id="checkbox-container" class="checkbox-container"></div>
+</body>
+<script>
+  const socket = io();
+  const container = document.getElementById('checkbox-container');
+  let checkboxCount = 0;
+  const batchSize = 10000; // Number of checkboxes to add per scroll
+  const maxCheckboxes = 1000000; // Limit to 1 million
+
+  function addCheckboxes() {
+    for (let i = 0; i < batchSize && checkboxCount < maxCheckboxes; i++) {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `checkbox-${checkboxCount}`;
+      checkbox.className = 'checkbox-item';
+
+      checkbox.addEventListener('change', () => {
+        socket.emit('checkboxUpdate', { id: checkbox.id, checked: checkbox.checked });
+      });
+      
+      container.appendChild(checkbox);
+      checkboxCount++;
+    }
+  }
+
+  addCheckboxes();
+
+  window.addEventListener('scroll', () => {
+    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
+      addCheckboxes();
+    }
+  });
+
+  socket.on('checkboxUpdate', (data) => {
+    const checkbox = document.getElementById(data.id);
+    if (checkbox) {
+      checkbox.checked = data.checked;
+    }
+  });
+
+  socket.on('initialStates', (states) => {
+    Object.entries(states).forEach(([id, checked]) => {
+      const checkbox = document.getElementById(id);
+      if (checkbox) {
+        checkbox.checked = checked;
+      }
+    });
+  });
+</script>
+</html>

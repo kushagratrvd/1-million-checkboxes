@@ -23,6 +23,9 @@
           <span class="stat-value" id="total-checked">0</span>
         </div>
       </div>
+      <div id="auth-section" style="display: flex; gap: 12px; align-items: center; margin-left: auto;">
+        <a id="auth-btn" href="/login" style="padding: 9px 16px; background: var(--ink); color: #fff; text-decoration: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600;">Sign in</a>
+      </div>
     </header>
 
     <section class="board" aria-label="Checkbox board">
@@ -45,6 +48,30 @@
   let lastCheckboxChangeAt = 0;
   const globalCheckboxStates = {};
   const CHECKBOX_STATE_KEY = 'checkbox_states';
+
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+  }
+
+  let user = null;
+  try {
+    const userCookie = getCookie("user");
+    if (userCookie) {
+      user = JSON.parse(decodeURIComponent(userCookie));
+      const authBtn = document.getElementById("auth-btn");
+      authBtn.innerText = "Log out";
+      authBtn.href = "/logout";
+      
+      const welcomeText = document.createElement("span");
+      welcomeText.innerText = `Hi, ${user.firstName || user.email.split('@')[0]}!`;
+      welcomeText.style.cssText = "font-size: 0.85rem; font-weight: 500; color: var(--muted);";
+      
+      document.getElementById("auth-section").prepend(welcomeText);
+    }
+  } catch (e) {}
 
   function showToast(message) {
     const toast = document.getElementById("toast");
@@ -85,6 +112,12 @@
       return;
     }
 
+    if (!user) {
+      event.preventDefault();
+      showToast("Please sign in first to check boxes.");
+      return;
+    }
+
     if (isClickOnCooldown()) {
       event.preventDefault();
       showToast("Please wait 3 seconds before clicking again.");
@@ -97,6 +130,11 @@
     }
 
     const checkbox = event.target;
+    if (!user) {
+      checkbox.checked = Boolean(globalCheckboxStates[checkbox.id]);
+      return;
+    }
+
     if (isClickOnCooldown()) {
       checkbox.checked = Boolean(globalCheckboxStates[checkbox.id]);
       showToast("Please wait 3 seconds before clicking again.");

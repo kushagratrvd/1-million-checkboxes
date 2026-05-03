@@ -3,11 +3,68 @@ import { Server } from "socket.io"
 import express from 'express';
 import { randomUUID } from "crypto";
 import { publisher, subscriber, redis } from "./redis-connection.js";
+import cookieParser from "cookie-parser";
+import "dotenv/config";
 
 const instanceId = randomUUID();
 
 async function main() {
   const app = express();
+  app.use(cookieParser());
+  
+  const AUTH_SERVER = process.env.AUTH_SERVER || "http://localhost:8000";
+  const CLIENT_ID = process.env.CLIENT_ID;
+  const CLIENT_SECRET = process.env.CLIENT_SECRET;
+  const REDIRECT_URI = process.env.REDIRECT_URI || "http://localhost:8081/callback";
+
+  app.get("/login", (req, res) => {
+    const authUrl = new URL(`${AUTH_SERVER}/o/authenticate`);
+    if(CLIENT_ID) authUrl.searchParams.set("client_id", CLIENT_ID);
+    if(REDIRECT_URI) authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+    // add state to mitigate CSRF in production
+    res.redirect(authUrl.toString());
+  });
+
+  app.get("/callback", async (req, res) => {
+    const { code } = req.query;
+    if (!code) return res.status(400).send("No code provided");
+
+    try {
+      const tokenRes = await fetch(`${AUTH_SERVER}/o/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          redirect_uri: REDIRECT_URI
+        })
+      });
+      const tokenData = await tokenRes.json();
+      
+      if (!tokenRes.ok) {
+        return res.status(400).send(`Failed to get token: ${tokenData.message || tokenData.error}`);
+      }
+
+      const userRes = await fetch(`${AUTH_SERVER}/o/userinfo`, {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      });
+      const userData = await userRes.json();
+
+      res.cookie("user", JSON.stringify(userData), { httpOnly: false });
+      res.redirect("/");
+    } catch (error) {
+      console.error(error);
+      res.status(500).send("Authentication failed");
+    }
+  });
+
+  app.get("/logout", (req, res) => {
+    res.clearCookie("user");
+    res.redirect("/");
+  });
+
   app.use(express.static('.'));
 
   const server = createServer(app);

@@ -18,16 +18,24 @@ async function main() {
 
   // Periodically report this server's user count to Redis
   setInterval(async () => {
-    await redis.set(`server-count:${instanceId}`, io.engine.clientsCount, 'EX', 5);
-  }, 2000);
+    await redis.hset('active-servers', instanceId, `${Date.now()}:${io.engine.clientsCount}`);
+  }, 3000);
 
   // Helper to calculate total active users across all servers
   async function getGlobalUserCount() {
-    const keys = await redis.keys('server-count:*');
-    if (keys.length === 0) return 0;
+    const servers = await redis.hgetall('active-servers');
+    let total = 0;
     
-    const counts = await redis.mget(keys);
-    return counts.reduce((sum, count) => sum + parseInt(count || '0', 10), 0);
+    for (const [id, data] of Object.entries(servers || {})) {
+      const [lastSeen, count] = data.split(':');
+      
+      if (Date.now() - Number(lastSeen) < 10000) {
+        total += Number(count);
+      } else {
+        redis.hdel('active-servers', id); // Clear dead servers
+      }
+    }
+    return total;
   }
 
   await subscriber.subscribe("internal-server:checkbox:change");
@@ -60,7 +68,7 @@ async function main() {
     socket.emit('initialStates', initialStates);
     
     // Force an immediate heartbeat so this user is counted right away
-    await redis.set(`server-count:${instanceId}`, io.engine.clientsCount, 'EX', 5);
+    await redis.hset('active-servers', instanceId, `${Date.now()}:${io.engine.clientsCount}`);
 
     const totalUsers = await getGlobalUserCount();
     const totalChecked = parseInt(await redis.get('total-checked') || '0', 10);
@@ -74,8 +82,8 @@ async function main() {
       const lastOperationTime = await redis.get(`rate-limiting:${socket.id}`);
       if(lastOperationTime){
         const timeElapsed = Date.now() - lastOperationTime;
-        if(timeElapsed < 5 * 1000){
-          socket.emit("server:error", { error: "Please wait 5 seconds before clicking again." });
+        if(timeElapsed < 3 * 1000){
+          socket.emit("server:error", { error: "Please wait 3 seconds before clicking again." });
           return;
         }
       } 
@@ -97,7 +105,7 @@ async function main() {
 
     socket.on('disconnect', async () => {
       // Force an immediate heartbeat reduction
-      await redis.set(`server-count:${instanceId}`, io.engine.clientsCount, 'EX', 5);
+      await redis.hset('active-servers', instanceId, `${Date.now()}:${io.engine.clientsCount}`);
       
       const totalUsers = await getGlobalUserCount();
       const totalChecked = parseInt(await redis.get('total-checked') || '0', 10);

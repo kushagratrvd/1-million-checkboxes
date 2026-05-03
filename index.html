@@ -41,7 +41,7 @@
   let checkboxCount = 0;
   const batchSize = 10000; // Number of checkboxes to add per scroll
   const maxCheckboxes = 1000000; // Limit to 1 million
-  const clickCooldownMs = 5000;
+  const clickCooldownMs = 3000;
   let lastCheckboxChangeAt = 0;
   const globalCheckboxStates = {};
   const CHECKBOX_STATE_KEY = 'checkbox_states';
@@ -87,7 +87,7 @@
 
     if (isClickOnCooldown()) {
       event.preventDefault();
-      showToast("Please wait 5 seconds before clicking again.");
+      showToast("Please wait 3 seconds before clicking again.");
     }
   });
 
@@ -99,7 +99,7 @@
     const checkbox = event.target;
     if (isClickOnCooldown()) {
       checkbox.checked = Boolean(globalCheckboxStates[checkbox.id]);
-      showToast("Please wait 5 seconds before clicking again.");
+      showToast("Please wait 3 seconds before clicking again.");
       return;
     }
 

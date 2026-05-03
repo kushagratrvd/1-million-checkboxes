@@ -53,15 +53,20 @@ Copy the `.env.example` file to `.env` or set these in your hosting provider (li
 
 * `PORT` (Optional): Port to run the HTTP server on (defaults to 8081).
 * `REDIS_URL` (Required for Production): Full connection string for your hosted Redis instance. If undefined, defaults to local `localhost:6379`.
-
+* `AUTH_SERVER` (Required): URL of the OIDC Auth Server (e.g., `http://localhost:8000` or production URL).
+* `CLIENT_ID` (Required): The Client ID generated after registering this application in the OIDC Auth Server.
+* `CLIENT_SECRET` (Required): The Client Secret generated after registering this application in the OIDC Auth Server.
+* `REDIRECT_URI` (Required): The callback URI (e.g., `http://localhost:8081/callback` or production callback URL).
 
 ## 🗄 Redis Setup Instructions
 * **Local:** Just run `docker-compose up -d`. Our code will automatically fallback to `localhost:6379`.
 * **Production (Render):** Deploy a free "Redis" instance on Render. Set its Eviction Policy to `noeviction` (preventing box-deletions when memory is high). Copy the "Internal Connection String" from your Render Redis dashboard and add it to your Web Service as the `REDIS_URL` environment variable.
 
 ## 👤 Auth Flow Explanation
-Current design opts for **frictionless anonymous access**.
-There are no user accounts, passwords, or OAuth flows. Identity and session tracking are tied directly to the ephemeral `socket.id` established during the WebSocket handshake.
+The app now integrates a secure **OIDC Authentication Flow**:
+1. **SSO Integration**: It operates as an OIDC Relying Party (Client), relying on a custom OIDC Provider (`oidc-auth`) for authentication.
+2. **Protected Actions**: Users can view the live checkbox states anonymously, but interacting with (clicking) them requires the user to successfully "Sign in". 
+3. **Session Cookies**: Upon redirecting back from the OIDC Server with a valid authorization code, the code is exchanged for an access token to fetch user details. A session cookie (`user`) is set, keeping the user logged in efficiently.
 
 ## 🔌 WebSocket Flow Explanation
 

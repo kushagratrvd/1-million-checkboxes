@@ -1,7 +1,10 @@
 import { createServer } from "http";
 import { Server } from "socket.io"
 import express from 'express';
+import { randomUUID } from "crypto";
 import { publisher, subscriber, redis } from "./redis-connection.js";
+
+const instanceId = randomUUID();
 
 async function main() {
   const app = express();
@@ -13,14 +16,27 @@ async function main() {
 
   const CHECKBOX_STATE_KEY = 'checkbox-state';
 
+  // Periodically report this server's user count to Redis
+  setInterval(async () => {
+    await redis.set(`server-count:${instanceId}`, io.engine.clientsCount, 'EX', 5);
+  }, 2000);
+
+  // Helper to calculate total active users across all servers
+  async function getGlobalUserCount() {
+    const keys = await redis.keys('server-count:*');
+    if (keys.length === 0) return 0;
+    
+    const counts = await redis.mget(keys);
+    return counts.reduce((sum, count) => sum + parseInt(count || '0', 10), 0);
+  }
+
   await subscriber.subscribe("internal-server:checkbox:change");
   await subscriber.subscribe("internal-server:totalDataUpdate");
   subscriber.on('message', async (channel, message) => {
     if(channel === 'internal-server:checkbox:change'){
-      const { id, checked } = JSON.parse(message);
+      const { id, checked, totalChecked } = JSON.parse(message);
       
-      const totalUsers = parseInt(await redis.get('total-users') || '0', 10);
-      const totalChecked = parseInt(await redis.get('total-checked') || '0', 10);
+      const totalUsers = await getGlobalUserCount();
 
       io.emit('server:totalDataUpdate', { totalUsers, totalChecked });
       io.emit('server:checkbox:change', { id, checked });
@@ -43,7 +59,10 @@ async function main() {
     }
     socket.emit('initialStates', initialStates);
     
-    const totalUsers = await redis.incr('total-users');
+    // Force an immediate heartbeat so this user is counted right away
+    await redis.set(`server-count:${instanceId}`, io.engine.clientsCount, 'EX', 5);
+
+    const totalUsers = await getGlobalUserCount();
     const totalChecked = parseInt(await redis.get('total-checked') || '0', 10);
     
     publisher.publish(
@@ -66,21 +85,21 @@ async function main() {
       await redis.hset(CHECKBOX_STATE_KEY, data.id, data.checked.toString());
       
       // Update global checked count atomically
-      if (data.checked) {
-        await redis.incr('total-checked');
-      } else {
-        await redis.decr('total-checked');
-      }
+      const newTotalChecked = data.checked 
+        ? await redis.incr('total-checked') 
+        : await redis.decr('total-checked');
 
       await publisher.publish(
         "internal-server:checkbox:change", 
-        JSON.stringify(data)
+        JSON.stringify({ ...data, totalChecked: newTotalChecked })
       );
     });
 
     socket.on('disconnect', async () => {
-      // Decrement user count on disconnect
-      const totalUsers = await redis.decr('total-users');
+      // Force an immediate heartbeat reduction
+      await redis.set(`server-count:${instanceId}`, io.engine.clientsCount, 'EX', 5);
+      
+      const totalUsers = await getGlobalUserCount();
       const totalChecked = parseInt(await redis.get('total-checked') || '0', 10);
       
       await publisher.publish(

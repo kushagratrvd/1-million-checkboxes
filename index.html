@@ -7,37 +7,109 @@
   <title>1 million checkboxes</title>
 </head>
 <body>
-  <h1>1 Million Checkboxes</h1>
-  <div class="header-stats">
-    Active Users: <span id="active-users">0</span> | 
-    Total Checked: <span id="total-checked">0</span>
-  </div>
-  <div id="checkbox-container" class="checkbox-container"></div>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="title-block">
+        <span class="status-dot" aria-hidden="true"></span>
+        <h1>1 Million Checkboxes</h1>
+      </div>
+      <div class="header-stats" aria-label="Live stats">
+        <div class="stat">
+          <span class="stat-label">Active Users</span>
+          <span class="stat-value" id="active-users">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Total Checked</span>
+          <span class="stat-value" id="total-checked">0</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="board" aria-label="Checkbox board">
+      <div id="checkbox-container" class="checkbox-container"></div>
+    </section>
+  </main>
+  <div id="toast"></div>
 </body>
+
 <script>
   let activeUsers = document.getElementById('active-users');
   let totalChecked = document.getElementById('total-checked');
   const socket = io();
   const container = document.getElementById('checkbox-container');
+
   let checkboxCount = 0;
   const batchSize = 10000; // Number of checkboxes to add per scroll
   const maxCheckboxes = 1000000; // Limit to 1 million
+  const clickCooldownMs = 5000;
+  let lastCheckboxChangeAt = 0;
+  const globalCheckboxStates = {};
+  const CHECKBOX_STATE_KEY = 'checkbox_states';
+
+  function showToast(message) {
+    const toast = document.getElementById("toast");
+    toast.innerText = message;
+    toast.className = "show";
+
+    setTimeout(() => {
+      toast.className = toast.className.replace("show", "");
+    }, 3000);
+  }
+
+  function isClickOnCooldown() {
+    return Date.now() - lastCheckboxChangeAt < clickCooldownMs;
+  }
 
   function addCheckboxes() {
+    const fragment = document.createDocumentFragment();
+
     for (let i = 0; i < batchSize && checkboxCount < maxCheckboxes; i++) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.id = `checkbox-${checkboxCount}`;
       checkbox.className = 'checkbox-item';
 
-      checkbox.addEventListener('change', () => {
-        socket.emit('checkboxUpdate', { id: checkbox.id, checked: checkbox.checked });
-      });
-      
-      container.appendChild(checkbox);
+      if (globalCheckboxStates[checkbox.id]) {
+        checkbox.checked = true;
+      }
+
+      fragment.appendChild(checkbox);
       checkboxCount++;
     }
+
+    container.appendChild(fragment);
   }
+
+  container.addEventListener('click', (event) => {
+    if (!event.target.matches('.checkbox-item')) {
+      return;
+    }
+
+    if (isClickOnCooldown()) {
+      event.preventDefault();
+      showToast("Please wait 5 seconds before clicking again.");
+    }
+  });
+
+  container.addEventListener('change', (event) => {
+    if (!event.target.matches('.checkbox-item')) {
+      return;
+    }
+
+    const checkbox = event.target;
+    if (isClickOnCooldown()) {
+      checkbox.checked = Boolean(globalCheckboxStates[checkbox.id]);
+      showToast("Please wait 5 seconds before clicking again.");
+      return;
+    }
+
+    lastCheckboxChangeAt = Date.now();
+    globalCheckboxStates[checkbox.id] = checkbox.checked;
+    socket.emit('client:checkbox:change', {
+      id: checkbox.id,
+      checked: checkbox.checked
+    });
+  });
 
   addCheckboxes();
 
@@ -47,20 +119,28 @@
     }
   });
 
-  socket.on('totalDataUpdate', (data) => {
+  socket.on('server:totalDataUpdate', (data) => {
     activeUsers.innerText = data.totalUsers;
     totalChecked.innerText = data.totalChecked;
   });
 
-  socket.on('checkboxUpdate', (data) => {
+  socket.on('server:checkbox:change', (data) => {
+    globalCheckboxStates[data.id] = data.checked;
+
     const checkbox = document.getElementById(data.id);
     if (checkbox) {
       checkbox.checked = data.checked;
     }
   });
 
+  socket.on('server:error', (data) => {
+    showToast(data.error);
+  });
+
   socket.on('initialStates', (states) => {
     Object.entries(states).forEach(([id, checked]) => {
+      globalCheckboxStates[id] = checked;
+
       const checkbox = document.getElementById(id);
       if (checkbox) {
         checkbox.checked = checked;
@@ -68,4 +148,213 @@
     });
   });
 </script>
+
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f6f3;
+    --surface: #ffffff;
+    --ink: #1b211d;
+    --muted: #626b60;
+    --line: #d9dfd8;
+    --accent: #0f766e;
+    --accent-strong: #0b5f59;
+    --shadow: 0 8px 24px rgba(32, 46, 38, 0.08);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-height: 100%;
+    background: var(--bg);
+  }
+
+  body {
+    min-height: 100%;
+    margin: 0;
+    color: var(--ink);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+  }
+
+  .app-shell {
+    width: min(1180px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 24px 0 56px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 12px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 76px;
+    margin-bottom: 22px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(217, 223, 216, 0.88);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+  }
+
+  .title-block {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .status-dot {
+    width: 11px;
+    height: 11px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: #19a974;
+    box-shadow: 0 0 0 5px rgba(25, 169, 116, 0.14);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.2rem, 2.4vw, 2rem);
+    font-weight: 760;
+    line-height: 1.05;
+    letter-spacing: 0;
+  }
+
+  .header-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(132px, 1fr));
+    gap: 10px;
+    flex: 0 0 auto;
+  }
+
+  .stat {
+    min-width: 0;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #eef6f4;
+  }
+
+  .stat-label {
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.1;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .stat-value {
+    display: block;
+    margin-top: 4px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.22rem;
+    font-weight: 780;
+    line-height: 1;
+  }
+
+  .board {
+    min-height: calc(100vh - 156px);
+    padding: 18px;
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .checkbox-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(18px, 1fr));
+    gap: 8px;
+    align-items: center;
+    contain: layout paint;
+  }
+
+  .checkbox-item {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+    transition: transform 80ms ease;
+  }
+
+  .checkbox-item:hover {
+    transform: translateY(-1px);
+  }
+
+  .checkbox-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  #toast {
+    visibility: hidden;
+    width: min(360px, calc(100% - 32px));
+    background-color: #9f1239;
+    color: #fff;
+    text-align: center;
+    border-radius: 8px;
+    padding: 14px 16px;
+    position: fixed;
+    z-index: 100;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%) translateY(8px);
+    font-size: 0.95rem;
+    font-weight: 650;
+    opacity: 0;
+    box-shadow: 0 10px 28px rgba(80, 7, 36, 0.18);
+    transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+  }
+
+  #toast.show {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  @media (max-width: 720px) {
+    .app-shell {
+      width: min(100% - 20px, 1180px);
+      padding-top: 10px;
+    }
+
+    .topbar {
+      top: 8px;
+      display: grid;
+      min-height: 0;
+      padding: 12px;
+    }
+
+    .header-stats {
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+    }
+
+    .board {
+      padding: 12px;
+    }
+
+    .checkbox-container {
+      grid-template-columns: repeat(auto-fill, minmax(16px, 1fr));
+      gap: 7px;
+    }
+
+    .checkbox-item {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+  }
+</style>
 </html>

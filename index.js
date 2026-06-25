@@ -179,11 +179,11 @@ async function main() {
   server.listen(port, ()=>{
     console.log(`server is running on port ${port}`);
 
-    const PING_INTERVAL = 840000;
+    //const PING_INTERVAL = 840000;
 
     const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
 
-    setInterval(async () => {
+    /*setInterval(async () => {
       try {
         console.log(`Pinging ${url} to keep awake...`);
         const response = await fetch(url);
@@ -195,7 +195,7 @@ async function main() {
       } catch (error) {
         console.error('Error during ping:', error.message);
       }
-    }, PING_INTERVAL);
+    }, PING_INTERVAL);*/
   });
 }
 
